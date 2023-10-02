@@ -1,0 +1,228 @@
+---
+title: "DS SPECIALIZATION - COURSE 5 (Reproducible Research) - ASSIGNMENT 1"
+author: "Bruno Laget"
+date: "Aug. 02, 2023"
+---
+
+#STUDY DESCRIPTION AND REVIEW CRITERIA
+
+## Introduction
+
+It is now possible to collect a large amount of data about personal movement using activity monitoring devices such as a Fitbit, Nike Fuelband, or Jawbone Up. These type of devices are part of the "quantified self" movement -- a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. But these data remain under-utilized both because the raw data are hard to obtain and there is a lack of statistical methods and software for processing and interpreting the data.
+
+This assignment makes use of data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
+
+The data for this assignment can be downloaded from the course web site:
+
+-   Dataset: [Activity monitoring data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip)
+
+The variables included in this dataset are:
+
+-   *steps*: Number of steps taking in a 5-minute interval (missing values are coded as 𝙽𝙰) </br>
+-   *date*: The date on which the measurement was taken in YYYY-MM-DD format </br>
+-   *interval*: Identifier for the 5-minute interval in which measurement was taken </br> The dataset is stored in a comma-separated-value (CSV) file and there are a total of 17,568 observations in this dataset.
+
+##REVIEW CRITERIA
+
+**Repo**
+
+1.  Valid GitHub URL
+2.  At least one commit beyond the original fork
+3. Valid SHA-1
+4.  SHA-1 corresponds to a specific commit
+
+**Commit containing full submission**
+
+1.  [Code for reading in the dataset and/or processing the data](#01)
+2.  [Histogram of the total number of steps taken each day](#02)
+3.  [Mean and median number of steps taken each day](#03)
+4.  [Time series plot of the average number of steps taken](#04)
+5.  [The 5-minute interval that, on average, contains the maximum number of steps](#05)
+6.  [Code to describe and show a strategy for imputing missing data](#06)
+7.  [Histogram of the total number of steps taken each day after missing values are imputed](#07)
+8.  [Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends](#08)
+9.  [All of the R code needed to reproduce the results (numbers, plots, etc.) in the report](#09)
+
+#ANALYSIS - CODES AND PLOTS                          
+
+Below are all the analyses requested in the assignment
+
+##ENVIRONMENT SETUP                                   
+
+Library calls, dataset pipelines, and all pre-analysis codes
+
+###DECLARING LIBRARIES                                 
+```{r}
+library("knitr")
+library("xtable")
+library("reshape2")
+library("data.table")
+library("dplyr")
+library("lubridate")
+library("ggplot2")
+library("DT")
+```
+
+
+###FILESET TO DATATABLE PIPELINE Download, unzip, load {#01}
+```{r import-data, cache=TRUE}
+fileUrl <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+download.file(fileUrl, destfile = paste0(getwd(), '/repdata%2Fdata%2Factivity.zip'), method = "curl")
+unzip("repdata%2Fdata%2Factivity.zip")
+activityDT <- data.table::fread(input = "activity.csv")
+```
+
+
+##DATA ANALYSIS
+
+## What is mean total number of steps taken per day?
+
+1.  Calculate the total number of steps taken per day {#02}
+
+```{r}
+StepsPerDay <- activityDT[, c(lapply(.SD, sum, na.rm = FALSE)), .SDcols = c("steps"), by = .(date)] 
+datatable(StepsPerDay)
+```
+
+2.  If you do not understand the difference between a histogram and a barplot, research the difference between them. Make a histogram of the total number of steps taken each day.
+
+```{r}
+ggplot(StepsPerDay, aes(x = steps)) +
+    geom_histogram(aes(y = after_stat(density)),fill = "#330099", binwidth = 1000) +
+    geom_density(
+      lwd=1,
+      colour = "#CC0066",
+      fill = "#FF3399",
+      alpha=0.2
+    ) + 
+  labs(title = "Daily Steps taken", x = "Steps count", y = "Frequency")
+```
+
+As the plot and the density curve show, the most frequent range of daily steps is between 7000 and 15000, with most observations averaging between 10000 and 11000.
+
+
+3.  Calculate and report the mean and median of the total number of steps taken per day {#03}
+
+```{r}
+StepsPerDay_2 <- StepsPerDay[, .(MeanSteps = mean(steps, na.rm = TRUE), MedianSteps = median(steps, na.rm = TRUE))]
+datatable(StepsPerDay_2)
+```
+The calculated mean and median confirm the findings of the histogram + density plot in the previous item.
+
+
+## What is the average daily activity pattern?
+
+1.  Make a time series plot (i.e. 𝚝𝚢𝚙𝚎 = "𝚕") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis) {#04}
+
+```{r}
+IntervalDT <- activityDT[, c(lapply(.SD, mean, na.rm = TRUE)), .SDcols = c("steps"), by = .(interval)] 
+
+ggplot(IntervalDT, aes(x = interval , y = steps)) +
+  geom_area(aes(fill=steps),color="#9966FF",alpha=0.4)+
+  geom_line(color="#330099", size=1,alpha=0.8) + 
+  labs(title = "Average Daily Steps", x = "Interval", y = "Avg. daily steps")
+```
+
+2.  Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps? {#05}
+
+```{r}
+maxsteps <- IntervalDT[steps == max(steps)]
+datatable(maxsteps)
+```
+## Imputing missing values
+
+1.  Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with 𝙽𝙰s)
+
+```{r}
+activityDTNew <- data.table::fread(input = "activity.csv")
+activityDTNew[is.na(steps), .N ]
+```
+
+There are 2304 missing values in the dataset, as shown above
+
+2.  Devise a strategy for filling in all of the missing values in the dataset. The strategy does not need to be sophisticated. For example, you could use the mean/median for that day, or the mean for that 5-minute interval, etc. {#06}
+
+```{r}
+activityDTNew[is.na(steps), "steps"] <- activityDTNew[, c(lapply(.SD, median, na.rm = TRUE)), .SDcols = c("steps")]
+```
+
+The code above replaces all 'steps' values equal to NA to the median of all valid 'steps' values
+
+3.  Create a new dataset that is equal to the original dataset but with the missing data filled in.
+
+```{r}
+data.table::fwrite(x = activityDTNew, file = "activity_noMissingData.csv", quote = FALSE)
+```
+
+4.  Make a histogram of the total number of steps taken each day and calculate and report the mean and median total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps? {#07}
+
+```{r}
+Total_Steps_nev <- activityDTNew[, c(lapply(.SD, sum)), .SDcols = c("steps"), by = .(date)] 
+
+# mean and median total number of steps taken per day
+TSStats <- Total_Steps_nev[, .(MeanSteps = mean(steps), MedianSteps = median(steps))]
+datatable(TSStats)
+```
+
+```{r}
+
+ggplot(Total_Steps_nev, aes(x = steps)) +
+    geom_histogram(aes(y = after_stat(density)),fill = "#330099", binwidth = 1000) +
+    geom_density(
+      lwd=1,
+      colour = "#CC0066",
+      fill = "#FF3399",
+      alpha=0.2
+    ) + 
+    geom_density(
+      data=StepsPerDay,
+      aes(x = steps, y = after_stat(density)),
+      lwd=1,
+      colour = "#009999",
+      fill = "#00CCCC",
+      alpha=0.2
+    ) +   
+  labs(title = "Daily Steps taken", x = "Steps count", y = "Frequency") + 
+  theme(legend.position="bottom") + guides()
+```
+
+The comparison shows a predictable frequency spike of the median value, and a similar decrease in null values; the mean, median and frequency density changed little, as can be seen both in the plot above and the summary below: 
+
+
+| **Type of Estimate**                       | **Mean_Steps** | **Median_Steps** |
+|----------------------------------------|------------|--------------|
+| DT with NA (**TEAL LINE**)             | 10765      | 10765        |
+| Filling NA w/ Median (**PINK LINE**)   | 9354       | 10395        |
+
+
+## Are there differences in activity patterns between weekdays and weekends?
+
+1.  Create a new factor variable in the dataset with two levels -- "weekday" and "weekend" indicating whether a given date is a weekday or weekend day.
+
+```{r}
+Sys.setlocale("LC_TIME", "C")
+
+activityDT_WD <- data.table::fread(input = "activity.csv")
+activityDT_WD[, date := as.POSIXct(date, format = "%Y-%m-%d")]
+activityDT_WD[, `DOW`:= weekdays(x = date)]
+activityDT_WD[grepl(pattern = "Monday|Tuesday|Wednesday|Thursday|Friday", x = `DOW`), "weekday_type"] <- "Weekday"
+activityDT_WD[grepl(pattern = "Saturday|Sunday", x = `DOW`), "weekday_type"] <- "Weekend"
+activityDT_WD[, `weekday_type` := as.factor(`weekday_type`)]
+datatable(activityDT_WD)
+```
+
+2.  Make a panel plot containing a time series plot (i.e. 𝚝𝚢𝚙𝚎 = "𝚕") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis). See the README file in the GitHub repository to see an example of what this plot should look like using simulated data. {#08}
+
+Tidying data up
+```{r}
+activityDT_WD[is.na(steps), "steps"] <- activityDT_WD[, c(lapply(.SD, median, na.rm = TRUE)), .SDcols = c("steps")]
+IntervalDT_WD <- activityDT_WD[, c(lapply(.SD, mean, na.rm = TRUE)), .SDcols = c("steps"), by = .(interval, `weekday_type`)] 
+datatable(IntervalDT_WD)
+```
+
+```{r}
+ggplot(IntervalDT_WD , aes(x = interval , y = steps, color=`weekday_type`)) + 
+  geom_line(size=1) + 
+  labs(title = "Avg. Daily Steps by Weektype", x = "Interval", y = "No. of Steps") + 
+  facet_wrap(~`weekday_type` , ncol = 1, nrow=2)
+```
